@@ -1,0 +1,298 @@
+---
+title: "Project Vaksin"
+author: "Nabila Valinka 123180060"
+date: "1/17/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tm)
+library(wordcloud2)
+library(twitteR)
+library(rtweet)
+library(shiny) #package shiny
+library(syuzhet) #package analisis sentimen
+library(wordcloud) #package wordcloud
+library(tm)
+library(vroom)
+library(here)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(plyr)
+library(RTextTools)
+```
+
+```{r}
+api_key<- "zbwirBAshh2lMwDF2m5N9BOhI"
+api_secret<- "2TbvtmVXbcszP1X6zHjfLqWy72dndxk1XGOWv0LsfRyAqGQpSg"
+access_token<- "397904324-4Oz0EcoNsXEmmNjXdqqWn5a0Cuk4XwSJ9fjQk7fp"
+access_token_secret<- "3eXAWIAqvho5l8FlbdePN5m30i17zrZxzQqQIu7ur7opO"
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+```
+
+```{r}
+tw = searchTwitter('vaksin', 
+                   n = 1000,
+                   retryOnRateLimit = 10e5, lang = "id") #retryOnRateLimit untuk looping
+saveRDS(tw,file = 'new_tweet.rds')
+```
+
+```{r}
+tw <- readRDS('new_tweet.rds')
+d = twListToDF(tw) #convert twitteR list to data
+#menampilkan semua tweet yang kita mining
+komen <- d$text
+komenc <- Corpus(VectorSource(komen))
+
+##hapus URL
+removeURL <- function(x) gsub("http[^[:space:]]*", "", x)
+twitclean <- tm_map(komenc, removeURL)
+##hapus New Line
+removeNL <- function(y) gsub("\n", "", y)
+twitclean <- tm_map(twitclean, removeNL)
+##hapus koma
+replacecomma <- function(y) gsub(",", "", y)
+twitclean <- tm_map(twitclean, replacecomma)
+##hapus retweet
+removeRT <- function(y) gsub("RT ", "", y)
+twitclean <- tm_map(twitclean, removeRT)
+##hapus titik
+removetitik2 <- function(y) gsub(":", "", y)
+twitclean <- tm_map(twitclean, removetitik2)
+##hapus titik koma
+removetitikkoma <- function(y) gsub(";", " ", y)
+twitclean <- tm_map(twitclean, removetitikkoma)
+#hapus titik3
+removetitik3 <- function(y) gsub("p.", "", y)
+twitclean <- tm_map(twitclean, removetitik3)
+#hapus &amp
+removeamp <- function(y) gsub("&amp;", "", y)
+twitclean <- tm_map(twitclean, removeamp)
+#hapus Mention
+removeUN <- function(z) gsub("@\\w+", "", z)
+twitclean <- tm_map(twitclean, removeUN)
+#hapus space dll
+remove.all <- function(xy) gsub("[^[:alpha:][:space:]]*", "", xy)
+twitclean <-tm_map(twitclean,stripWhitespace)
+inspect(twitclean[1:10])
+twitclean <- tm_map(twitclean,remove.all)
+twitclean <- tm_map(twitclean, removePunctuation) #tanda baca
+twitclean <- tm_map(twitclean, tolower) #mengubah huruf kecil
+myStopwords <- readLines("stop.txt", warn = FALSE)
+twitclean <- tm_map(twitclean,removeWords,myStopwords)
+twitclean <- tm_map(twitclean , removeWords, 
+                    c('kalo','gak','org',''))
+
+#HAPUS DATA KOSONG
+try.error = function(x)
+{
+  # create missing value
+  y = NA
+  # tryCatch error
+  try_error = tryCatch(tolower(x), error=function(e) e)
+  # if not an error
+  if (!inherits(try_error, "error"))
+    y = tolower(x)
+  # result
+  return(y)
+}
+# lower case using try.error with sapply 
+twitclean = sapply(twitclean, try.error)
+# remove NAs in some_txt
+twitclean = twitclean[!is.na(twitclean)]
+names(twitclean) = NULL
+```
+
+```{r}
+# dataframe data yg sudah bersih
+dataframe<-data.frame(text=unlist(sapply(twitclean, `[`)), stringsAsFactors=F)
+View(dataframe)
+write.csv(dataframe,'tweet_vaksin.csv')
+```
+
+```{r}
+## Naive Bayes
+library(e1071)
+library(caret)
+library(syuzhet)
+
+#digunakan untuk membaca file csv yang sudah di cleaning data
+vaksin_dataset <-read.csv("tweet_vaksin.csv",stringsAsFactors = FALSE)
+
+#digunakan untuk mengeset variabel cloumn text menjadi char
+review <- as.character(vaksin_dataset$text)
+
+#memanggil sentimen dictionary untuk menghitung presentasi dari beberapa emotion dan mengubahnya ke dalam text file
+get_nrc_sentiment('happy')
+get_nrc_sentiment('excitement')
+s<-get_nrc_sentiment(review)
+review_combine<-cbind(vaksin_dataset$text,s)
+par(mar=rep(3,4))
+barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+```
+
+```{r}
+## Wordcloud
+
+library(tm) #library untuk penggunaan corpus dalam cleaning data
+library(RTextTools) #library untuk penggunaan corpus dalam cleaning data
+library(e1071) #library yang terdapat sebuah algoritma naivebayes
+library(dplyr) #library yang terdapat sebuah algoritma naivebayes
+library(caret) #library yang terdapat sebuah algoritma naivebayes
+library(shiny) #library untuk memanggil shinny
+library(vroom) #membersihkan data
+library(here)  #membersihkan data
+library(ggplot2) #membuat barplot, grafik, dll
+library(plotly)
+library(syuzhet)
+
+df<-read.csv("tweet_vaksin.csv",stringsAsFactors = FALSE) #membaca file CSV
+glimpse(df) #melihat tipe dan struktur objek. Jika objek tersebut adalah data frame
+
+#Atur seed generator bilangan acak R, yang berguna untuk membuat simulasi atau objek acak yang dapat direproduksi.
+set.seed(20) #seed sebesar 20
+df<-df[sample(nrow(df)),] 
+df<-df[sample(nrow(df)),]
+glimpse(df) #melihat tipe data
+df$X=as.factor(df$X) #mengubah menjadi faktor
+#menampilkan semua tweet yang kita mining
+corpus<-Corpus(VectorSource(df$text)) 
+corpus
+#melihat data yang telah i corpus
+inspect(corpus[1:10])
+
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan, menyaring data yang sbelumnya belum tersaring
+corpus.clean<-corpus%>%
+  tm_map(content_transformer(tolower))%>% #digunakan untuk mengubah huruf besar dari string menjadi string huruf kecil
+  tm_map(removePunctuation)%>% #menghapus anda baca
+  tm_map(removeNumbers)%>% #menghapus nomor
+  tm_map(removeWords,stopwords(kind="en"))%>% #menghapus stopwords
+  tm_map(stripWhitespace) 
+dtm<-DocumentTermMatrix(corpus.clean)
+inspect(dtm[1:10,1:20])
+#klasifikasi dari data vaksin dengan melakukan data training dan data test
+df.train<-df[1:589,]
+df.test<-df[590:1177,]
+dtm.train<-dtm[1:589,]
+dtm.test<-dtm[590:1000,]
+corpus.clean.train<-corpus.clean[1:589]
+corpus.clean.test<-corpus.clean[590:1000]
+#biasanya teks diubah menjadi Document-Term Matrix (DTM) melalui proses yang bernama tokenization. Tokenization berfungsi memecah 1 kalimat menjadi beberapa term. term dapat berupa 1 kata, pasangan 2 kata, dan seterusnya. 
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5) #frekuensi kemunculan kata tersebut pada dokumen
+length(fivefreq)
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+dim(dtm.test.nb)
+
+convert_count <- function(x){
+  y<-ifelse(x>0,1,0)
+  y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+  y
+}
+#data train dan test naive bayes
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+classifier<-naiveBayes(trainNB,df.train$X,laplace = 1)
+library(wordcloud)
+#menampikan tampilan dari worldcloud
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+```
+
+
+```{r}
+## Shiny
+#membuka file csv
+twitter <- read.csv(file="tweet_vaksin.csv",header=TRUE)
+#membuka text file pada data frame twitter
+tweet <- twitter$text
+
+# bagian yang mengatur tampilan web, baik input maupun outpun yang akan ditampilkan dalam web app.
+ui <- fluidPage(
+  titlePanel("Penggunaan Kata Vaksin Pada Twitter"), #halaman judul dr fluid page
+  mainPanel( #tab pada fluidpage
+    #plot output : untuk scatterplot
+    tabsetPanel(type = "tabs",
+                tabPanel("Scatterplot", plotOutput("scatterplot")), #tab berupa scatterplot/grafik
+                tabPanel("Data Twitter", DT::dataTableOutput('tbl')), #tab berupa data clening twitter
+                tabPanel("Wordcloud", plotOutput("Wordcloud")) #tab berupa worldcloud
+    )
+  )
+)
+
+
+# SERVER
+# Disinialah tempat dimana data akan dianalisis dan diproses lalu hasilnya akan ditampilkan atau diplotkan pada bagian mainpanel() ui yang telah dijelaskan sebelumnya.
+server <- function(input, output) {
+  
+  # Output Data
+  output$tbl = DT::renderDataTable({ 
+    DT::datatable(twitter, options = list(lengthChange = FALSE)) # data akan ditampilkan dalam beberapa halaman.
+  })
+  
+  #Barplot
+  output$scatterplot <- renderPlot({vaksin_dataset<-read.csv("tweet_vaksin.csv",stringsAsFactors = FALSE)
+  review <-as.character(vaksin_dataset$text)
+  get_nrc_sentiment('happy')
+  get_nrc_sentiment('excitement')
+  s<-get_nrc_sentiment(review)
+  review_combine<-cbind(vaksin_dataset$text,s)
+  par(mar=rep(3,4))
+  barplot(colSums(s),col=rainbow(10),ylab='count',main='sentiment analisis')
+  }, height=400)
+  
+  #WordCloud
+  output$Wordcloud <- renderPlot({
+   set.seed(20)
+df<-df[sample(nrow(df)),]
+df<-df[sample(nrow(df)),]
+glimpse(df)
+df$X=as.factor(df$X)
+corpus<-Corpus(VectorSource(df$text))
+corpus
+inspect(corpus[1:10])
+
+#fungsinya untuk membersihkan data data yang tidak dibutuhkan 
+corpus.clean<-corpus%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords,stopwords(kind="en"))%>%
+  tm_map(stripWhitespace)
+dtm<-DocumentTermMatrix(corpus.clean)
+inspect(dtm[1:10,1:20])
+df.train<-df[1:589,]
+df.test<-df[590:1177,]
+dtm.train<-dtm[1:589,]
+dtm.test<-dtm[590:1000,]
+corpus.clean.train<-corpus.clean[1:589]
+corpus.clean.test<-corpus.clean[590:1000]
+dim(dtm.train)
+fivefreq<-findFreqTerms(dtm.train,5)
+length(fivefreq)
+dtm.train.nb<-DocumentTermMatrix(corpus.clean.train,control = list(dictionary=fivefreq))
+dtm.test.nb<-DocumentTermMatrix(corpus.clean.test,control = list(dictionary=fivefreq))
+dim(dtm.test.nb)
+
+convert_count <- function(x){
+  y<-ifelse(x>0,1,0)
+  y<-factor(y,levels=c(0,1),labels=c("no","yes"))
+  y
+}
+trainNB<-apply(dtm.train.nb,2,convert_count)
+testNB<-apply(dtm.test.nb,1,convert_count)
+classifier<-naiveBayes(trainNB,df.train$X,laplace = 1)
+library(wordcloud)
+wordcloud(corpus.clean,min.freq = 4,max.words=100,random.order=F,colors=brewer.pal(8,"Dark2"))
+})
+
+}
+
+shinyApp(ui = ui, server = server)
+```
+
